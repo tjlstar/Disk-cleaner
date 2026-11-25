@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Windows;
 using DiskCleaner.Core;
 
@@ -15,17 +16,47 @@ public sealed class EntryRowViewModel : ObservableObject
     private double _barFraction;
     private long _runningSize;
     private MarkState _mark;
+    private bool _isDrillTarget;
 
-    public EntryRowViewModel(int index, LevelEntry entry, MarkState mark, Action<EntryRowViewModel> toggleMark)
+    public EntryRowViewModel(
+        Level level,
+        int index,
+        LevelEntry entry,
+        MarkState mark,
+        bool showPath,
+        Action<EntryRowViewModel> toggleMark)
     {
+        Level = level;
         Index = index;
         _entry = entry;
         _mark = mark;
+        ShowPath = showPath;
         _toggleMark = toggleMark;
+        NameKey = EntryOrder.NameKey(entry.Name);
     }
+
+    public static IComparer<EntryRowViewModel> Order { get; } =
+        Comparer<EntryRowViewModel>.Create((a, b) => EntryOrder.Compare(a._entry, a.NameKey, b._entry, b.NameKey));
+
+    public SortKey NameKey { get; }
+
+    /// <summary>The folder this row belongs to. After drilling down, one list holds rows from several folders.</summary>
+    public Level Level { get; }
 
     /// <summary>Position in the level's entry list, which never changes; the row's place on screen does.</summary>
     public int Index { get; }
+
+    /// <summary>A drilled-down list mixes several folders, so each row says where it is.</summary>
+    public bool ShowPath { get; }
+
+    public string PathText => _entry.FullPath;
+
+    /// <summary>In "largest N" mode, the folders the next drill-down will open.</summary>
+    public bool IsDrillTarget
+    {
+        get => _isDrillTarget;
+        set => SetProperty(ref _isDrillTarget, value);
+    }
 
     public LevelEntry Entry => _entry;
 

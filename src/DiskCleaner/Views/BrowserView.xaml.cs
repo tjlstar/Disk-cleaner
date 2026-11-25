@@ -17,17 +17,17 @@ public partial class BrowserView : UserControl
         {
             if (e.OldValue is BrowserViewModel oldVm)
             {
-                oldVm.LevelOpened -= OnLevelOpened;
+                oldVm.ViewOpened -= OnViewOpened;
             }
 
             if (e.NewValue is BrowserViewModel newVm)
             {
-                newVm.LevelOpened += OnLevelOpened;
+                newVm.ViewOpened += OnViewOpened;
             }
         };
     }
 
-    private void OnLevelOpened(object? sender, EventArgs e)
+    private void OnViewOpened(object? sender, EventArgs e)
     {
         _scrollViewer ??= FindScrollViewer(EntryList);
         _scrollViewer?.ScrollToTop();

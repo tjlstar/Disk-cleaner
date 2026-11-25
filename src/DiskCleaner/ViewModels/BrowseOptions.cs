@@ -2,7 +2,7 @@ using DiskCleaner.Core;
 
 namespace DiskCleaner.ViewModels;
 
-/// <summary>How levels are shown. Shared by every drive for the whole session.</summary>
+/// <summary>What "drill down" opens: every folder in the list, or only the largest N. Shared by every drive for the whole session.</summary>
 public sealed class BrowseOptions : ObservableObject
 {
     private bool _showTopOnly;

@@ -36,4 +36,30 @@ public class EntryOrderTests
 
         Assert.Equal(["a", "b"], entries.Order(EntryOrder.Comparer).Select(e => e.Name));
     }
+
+    [Fact]
+    public void Precomputed_name_keys_give_the_same_order()
+    {
+        var entries = new[]
+        {
+            Entry("Windows", SizeStatus.Pending),
+            Entry("program files", SizeStatus.Pending),
+            Entry("Program Files (x86)", SizeStatus.Pending),
+            Entry("用户", SizeStatus.Pending),
+            Entry("$Recycle.Bin", SizeStatus.Known, 7),
+            Entry("apps", SizeStatus.Known, 7),
+            Entry("z-unknown", SizeStatus.Unknown),
+            Entry("A-unknown", SizeStatus.Unknown),
+        };
+
+        var plain = entries.Order(EntryOrder.Comparer).Select(e => e.Name).ToArray();
+        var keyed = entries
+            .Select(e => (Entry: e, Key: EntryOrder.NameKey(e.Name)))
+            .Order(Comparer<(LevelEntry Entry, System.Globalization.SortKey Key)>.Create(
+                (a, b) => EntryOrder.Compare(a.Entry, a.Key, b.Entry, b.Key)))
+            .Select(x => x.Entry.Name)
+            .ToArray();
+
+        Assert.Equal(plain, keyed);
+    }
 }
