@@ -13,9 +13,10 @@ public sealed class PendingListViewModel : ObservableObject
     private readonly LevelStore _store;
     private volatile bool _sizesChanged;
     private bool _isExpanded = true;
+    private bool _isBusy;
     private string _totalText = "";
 
-    public PendingListViewModel(DeletionList list, LevelStore store)
+    public PendingListViewModel(DeletionList list, LevelStore store, Action startDeletion)
     {
         _list = list;
         _store = store;
@@ -25,8 +26,9 @@ public sealed class PendingListViewModel : ObservableObject
             {
                 _list.Remove(item.Item);
             }
-        });
+        }, _ => !IsBusy);
         ToggleExpandedCommand = new RelayCommand(_ => IsExpanded = !IsExpanded);
+        DeleteCommand = new RelayCommand(_ => startDeletion(), _ => HasItems && !IsBusy);
 
         _list.Changed += (_, _) => RebuildItems();
         _store.EntriesChanged += (_, _) => _sizesChanged = true;
@@ -75,31 +77,30 @@ public sealed class PendingListViewModel : ObservableObject
 
     public ICommand ToggleExpandedCommand { get; }
 
-    private void RebuildItems()
-    {
-        Items.Clear();
-        foreach (var item in _list.Items)
-        {
-            Items.Add(new PendingItemViewModel(item));
-        }
+    public ICommand DeleteCommand { get; }
 
-        RefreshSizes();
-        OnPropertyChanged(nameof(HasItems));
-        OnPropertyChanged(nameof(CountText));
-        OnPropertyChanged(nameof(ShowItems));
+    /// <summary>While a deletion is being confirmed, run or reviewed, the list can't be changed.</summary>
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
     }
 
     /// <summary>Only sizes already known are added up; nothing is scanned just to fill in the total.</summary>
-    private void RefreshSizes()
+    public static string DescribeTotal(IEnumerable<LevelEntry?> entries)
     {
         long total = 0;
         int known = 0;
         int unknown = 0;
         bool atLeast = false;
-        foreach (var item in Items)
+        foreach (var entry in entries)
         {
-            LevelEntry? entry = _store.TryGetEntry(item.Item.Kind, item.Item.Path);
-            item.Update(entry);
             switch (entry?.Status)
             {
                 case SizeStatus.Known:
@@ -117,17 +118,39 @@ public sealed class PendingListViewModel : ObservableObject
 
         if (known == 0)
         {
-            TotalText = unknown > 0 ? $"{unknown} 项大小未知" : "";
-            return;
+            return unknown > 0 ? $"{unknown} 项大小未知" : "";
         }
 
         string text = $"合计约 {(atLeast ? "≥ " : "")}{SizeFormatter.Format(total)}";
-        if (unknown > 0)
+        return unknown > 0 ? text + $"，另有 {unknown} 项大小未知" : text;
+    }
+
+    private void RebuildItems()
+    {
+        Items.Clear();
+        foreach (var item in _list.Items)
         {
-            text += $"，另有 {unknown} 项大小未知";
+            Items.Add(new PendingItemViewModel(item));
         }
 
-        TotalText = text;
+        RefreshSizes();
+        CommandManager.InvalidateRequerySuggested();
+        OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(CountText));
+        OnPropertyChanged(nameof(ShowItems));
+    }
+
+    private void RefreshSizes()
+    {
+        var entries = new List<LevelEntry?>(Items.Count);
+        foreach (var item in Items)
+        {
+            LevelEntry? entry = _store.TryGetEntry(item.Item.Kind, item.Item.Path);
+            item.Update(entry);
+            entries.Add(entry);
+        }
+
+        TotalText = DescribeTotal(entries);
     }
 }
 

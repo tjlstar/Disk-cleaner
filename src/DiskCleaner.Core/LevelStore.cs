@@ -27,13 +27,7 @@ public sealed class LevelStore
             return null;
         }
 
-        Level? level;
-        lock (_lock)
-        {
-            _levels.TryGetValue(Normalize(levelPath), out level);
-        }
-
-        return level?.FindEntry(kind, path);
+        return Find(levelPath)?.FindEntry(kind, path);
     }
 
     /// <summary>Returns the remembered level, or starts listing it. Either way it becomes the one calculated first.</summary>
@@ -87,6 +81,138 @@ public sealed class LevelStore
     public void PauseCalculation() => _calculator.Pause();
 
     public void ResumeCalculation() => _calculator.Resume();
+
+    /// <summary>
+    /// The files behind a "smaller files" row, as they were listed when the row was shown;
+    /// read again only if that level is no longer remembered.
+    /// </summary>
+    public IReadOnlyList<string> GetSmallFilePaths(string folder)
+    {
+        Level? level = Find(folder);
+        if (level is { Status: LevelStatus.Calculating or LevelStatus.Done })
+        {
+            return level.SmallFilePaths;
+        }
+
+        return LevelLister.List(Normalize(folder)).SmallFiles;
+    }
+
+    /// <summary>
+    /// Brings the remembered sizes up to date after an item was deleted, wholly or in part:
+    /// what is left of it is measured again, and the bytes that went are taken off every folder further out.
+    /// </summary>
+    public void ApplyDeletion(DeletionItem item)
+    {
+        if (item.Kind == EntryKind.Folder)
+        {
+            ForgetInside(item.Path);
+        }
+
+        Task.Run(() => UpdateAfterDeletion(item));
+    }
+
+    private void UpdateAfterDeletion(DeletionItem item)
+    {
+        string? levelPath = item.Kind == EntryKind.SmallFiles ? item.Path : Path.GetDirectoryName(item.Path);
+        if (levelPath is null || Find(levelPath) is not { } level)
+        {
+            return;
+        }
+
+        int index = level.IndexOf(item.Kind, item.Path);
+        if (index < 0 || level.EntryAt(index) is not { } before)
+        {
+            return;
+        }
+
+        if (level.Jobs is { } jobs && index < jobs.Length && jobs[index] is { } job)
+        {
+            _calculator.Cancel(job);
+        }
+
+        long remaining = 0;
+        switch (item.Kind)
+        {
+            case EntryKind.Folder when Path.Exists(item.Path):
+                var (total, unreadable, error) = FolderSizer.Measure(item.Path);
+                if (error != 0)
+                {
+                    level.FailEntry(index, ErrorDescriptions.Describe(error), ErrorDescriptions.SystemMessage(error));
+                    return;
+                }
+
+                remaining = total;
+                level.CompleteEntry(index, total, unreadable);
+                break;
+            case EntryKind.File when File.Exists(item.Path):
+                remaining = new FileInfo(item.Path).Length;
+                level.CompleteEntry(index, remaining, 0);
+                break;
+            case EntryKind.SmallFiles:
+                string[] left = level.SmallFilePaths.Where(File.Exists).ToArray();
+                if (left.Length > 0)
+                {
+                    remaining = left.Sum(p => new FileInfo(p).Length);
+                    level.SetSmallFiles(index, left, remaining);
+                }
+                else
+                {
+                    level.SetSmallFiles(index, [], 0);
+                    level.MarkGone(index);
+                }
+
+                break;
+            default:
+                level.MarkGone(index);
+                break;
+        }
+
+        if (before.Status == SizeStatus.Known && before.Size > remaining)
+        {
+            ReduceFoldersAbove(level.Path, before.Size - remaining);
+        }
+    }
+
+    private void ReduceFoldersAbove(string folder, long bytes)
+    {
+        string child = folder;
+        while (Path.GetDirectoryName(child) is { } parent)
+        {
+            if (Find(parent) is { } level && level.IndexOfFolder(child) is >= 0 and var index)
+            {
+                level.ReduceKnownSize(index, bytes);
+            }
+
+            child = parent;
+        }
+    }
+
+    /// <summary>Remembered levels inside a deleted folder no longer match the disk.</summary>
+    private void ForgetInside(string folder)
+    {
+        string prefix = Path.TrimEndingDirectorySeparator(folder) + Path.DirectorySeparatorChar;
+        lock (_lock)
+        {
+            foreach (string path in _levels.Keys.ToList())
+            {
+                if (string.Equals(path, folder, StringComparison.OrdinalIgnoreCase) ||
+                    path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    _levels.Remove(path, out var level);
+                    level!.Discard();
+                    _calculator.Forget(level);
+                }
+            }
+        }
+    }
+
+    private Level? Find(string path)
+    {
+        lock (_lock)
+        {
+            return _levels.TryGetValue(Normalize(path), out var level) ? level : null;
+        }
+    }
 
     private static string Normalize(string path)
     {

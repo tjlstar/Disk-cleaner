@@ -173,6 +173,79 @@ public class LevelStoreTests
         Assert.Equal("已经不在原来的位置", level.GetSnapshot().Error);
     }
 
+    [Fact]
+    public async Task A_deleted_folder_disappears_and_the_folders_above_shrink()
+    {
+        using var tree = new TempTree();
+        tree.File(@"a\keep.bin", 10);
+        string doomed = tree.Folder(@"a\b");
+        tree.File(@"a\b\gone.bin", 20);
+        var store = new LevelStore();
+        var root = store.Open(tree.Root);
+        var a = store.Open(Path.Combine(tree.Root, "a"));
+        var b = store.Open(doomed);
+        await WaitUntilSettled(b);
+        await WaitUntilSettled(a);
+        await WaitUntilSettled(root);
+        Assert.Equal(30, Named(root, "a").Size);
+
+        Directory.Delete(doomed, recursive: true);
+        store.ApplyDeletion(new DeletionItem(EntryKind.Folder, doomed, "b"));
+
+        await WaitFor(() => Named(a, "b").IsGone);
+        await WaitFor(() => Named(root, "a").Size == 10);
+        Assert.True(b.IsDiscarded);
+    }
+
+    [Fact]
+    public async Task What_is_left_of_a_partly_deleted_folder_is_measured_again()
+    {
+        using var tree = new TempTree();
+        string folder = tree.Folder("a");
+        tree.File(@"a\stuck.bin", 5);
+        string removed = tree.File(@"a\removed.bin", 40);
+        var store = new LevelStore();
+        var root = store.Open(tree.Root);
+        await WaitUntilSettled(root);
+
+        File.Delete(removed);
+        store.ApplyDeletion(new DeletionItem(EntryKind.Folder, folder, "a"));
+
+        await WaitFor(() => Named(root, "a").Size == 5);
+        Assert.False(Named(root, "a").IsGone);
+    }
+
+    [Fact]
+    public async Task Deleted_smaller_files_take_only_their_own_bytes_off()
+    {
+        using var tree = new TempTree();
+        string folder = tree.Folder("a");
+        string small = tree.File(@"a\small.txt", 3);
+        tree.File(@"a\sub\inner.bin", 50);
+        var store = new LevelStore();
+        var root = store.Open(tree.Root);
+        var a = store.Open(folder);
+        await WaitUntilSettled(a);
+        await WaitUntilSettled(root);
+        Assert.Equal([small], store.GetSmallFilePaths(folder));
+
+        File.Delete(small);
+        store.ApplyDeletion(new DeletionItem(EntryKind.SmallFiles, folder, "其余较小的文件"));
+
+        await WaitFor(() => a.GetSnapshot().Entries.Single(e => e.Kind == EntryKind.SmallFiles).IsGone);
+        await WaitFor(() => Named(root, "a").Size == 50);
+    }
+
+    private static async Task WaitFor(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "timed out");
+            await Task.Delay(20);
+        }
+    }
+
     private static IDisposable DenyListing(string path)
     {
         var directory = new DirectoryInfo(path);

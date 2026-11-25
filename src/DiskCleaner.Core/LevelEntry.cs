@@ -41,6 +41,9 @@ public sealed record LevelEntry
 
     public string? Detail { get; init; }
 
+    /// <summary>Deleted during this session. The row stays in the level, so positions don't shift, but isn't shown.</summary>
+    public bool IsGone { get; init; }
+
     public bool IsSizeFinal => Status is SizeStatus.Known or SizeStatus.Unknown or SizeStatus.NotCounted;
 
     public bool CanOpen => Kind == EntryKind.Folder && Status != SizeStatus.NotCounted;

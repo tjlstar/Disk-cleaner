@@ -27,6 +27,13 @@
                        Text="勾选只记在这次打开期间，关掉程序就清空。"
                        TextWrapping="Wrap" />
 
+            <Button DockPanel.Dock="Bottom"
+                    Margin="4,10,4,0"
+                    HorizontalAlignment="Stretch"
+                    Style="{StaticResource PrimaryButton}"
+                    Command="{Binding DeleteCommand}"
+                    Content="放入回收站" />
+
             <ScrollViewer VerticalScrollBarVisibility="Auto"
                           Visibility="{Binding ShowItems, Converter={StaticResource BoolToVisibility}}">
                 <ItemsControl ItemsSource="{Binding Items}">

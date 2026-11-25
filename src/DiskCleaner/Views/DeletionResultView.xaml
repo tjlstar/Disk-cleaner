@@ -1,0 +1,86 @@
+<UserControl x:Class="DiskCleaner.Views.DeletionResultView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <DockPanel Margin="28,22,28,22">
+        <StackPanel DockPanel.Dock="Top">
+            <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding Headline}" />
+            <TextBlock Margin="0,12,0,0"
+                       FontSize="15"
+                       Text="{Binding RecycledText}"
+                       Visibility="{Binding HasRecycled, Converter={StaticResource BoolToVisibility}}" />
+            <TextBlock Margin="0,6,0,0"
+                       Foreground="#B42318"
+                       Text="{Binding PermanentText}"
+                       TextWrapping="Wrap"
+                       Visibility="{Binding HasPermanent, Converter={StaticResource BoolToVisibility}}" />
+            <Border Margin="0,12,0,0"
+                    Padding="12,8"
+                    Background="#EEF5FC"
+                    BorderBrush="#C9DDF2"
+                    BorderThickness="1"
+                    CornerRadius="6">
+                <TextBlock Text="{Binding ReminderText}" TextWrapping="Wrap" />
+            </Border>
+            <TextBlock Margin="0,10,0,0"
+                       Text="{Binding LeftText}"
+                       TextWrapping="Wrap"
+                       Visibility="{Binding HasLeft, Converter={StaticResource BoolToVisibility}}" />
+        </StackPanel>
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,16,0,0" LastChildFill="False">
+            <Button DockPanel.Dock="Right"
+                    Padding="16,7"
+                    Style="{StaticResource ToolButton}"
+                    Command="{Binding BackCommand}"
+                    Content="返回"
+                    IsDefault="True" />
+            <Button DockPanel.Dock="Right"
+                    Margin="0,0,10,0"
+                    Style="{StaticResource PrimaryButton}"
+                    Command="{Binding RetryCommand}"
+                    Content="再试一次放进回收站"
+                    Visibility="{Binding CanRetry, Converter={StaticResource BoolToVisibility}}" />
+        </DockPanel>
+
+        <DockPanel Margin="0,20,0,0" Visibility="{Binding HasFailures, Converter={StaticResource BoolToVisibility}}">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right"
+                        Style="{StaticResource ToolButton}"
+                        Command="{Binding CopyCommand}"
+                        Content="复制这份清单" />
+                <TextBlock DockPanel.Dock="Right"
+                           Margin="0,0,10,0"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="{Binding CopiedText}" />
+                <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding FailureTitle}" />
+            </DockPanel>
+            <TextBlock DockPanel.Dock="Top"
+                       Margin="0,0,0,8"
+                       FontSize="12"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       Text="这些还在原来的位置，也还在待删除清单里。"
+                       TextWrapping="Wrap" />
+            <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="6">
+                <ListBox BorderThickness="0"
+                         ItemsSource="{Binding Failures}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         VirtualizingPanel.IsVirtualizing="True">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="4,4">
+                                <TextBlock Text="{Binding Path}" TextWrapping="Wrap" />
+                                <TextBlock Foreground="{StaticResource WarningTextBrush}" Text="{Binding Reason}" TextWrapping="Wrap" />
+                                <TextBlock FontSize="12"
+                                           Foreground="{StaticResource MutedTextBrush}"
+                                           Text="{Binding Detail}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </DockPanel>
+    </DockPanel>
+</UserControl>

@@ -22,6 +22,15 @@
         <DataTemplate DataType="{x:Type vm:BrowserViewModel}">
             <views:BrowserView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ConfirmDeletionViewModel}">
+            <views:ConfirmDeletionView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DeletionProgressViewModel}">
+            <views:DeletionProgressView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DeletionResultViewModel}">
+            <views:DeletionResultView />
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>

@@ -170,6 +170,42 @@ public sealed class Level
             Detail = detail,
         });
 
+    internal void MarkGone(int index) =>
+        Change(index, e => e with
+        {
+            Status = SizeStatus.Known,
+            Size = 0,
+            UnreadableFolders = 0,
+            FileCount = 0,
+            Reason = null,
+            Detail = null,
+            IsGone = true,
+        });
+
+    /// <summary>Takes deleted bytes off a folder further out, if its size is already known.</summary>
+    internal void ReduceKnownSize(int index, long bytes) =>
+        Change(index, e => e.Status == SizeStatus.Known && !e.IsGone
+            ? e with { Size = Math.Max(0, e.Size - bytes) }
+            : e);
+
+    internal void SetSmallFiles(int index, string[] remaining, long size)
+    {
+        lock (_sync)
+        {
+            _smallFiles = remaining;
+        }
+
+        Change(index, e => e with { Status = SizeStatus.Known, Size = size, FileCount = remaining.Length });
+    }
+
+    internal LevelEntry? EntryAt(int index)
+    {
+        lock (_sync)
+        {
+            return (uint)index < (uint)_entries.Length ? _entries[index] : null;
+        }
+    }
+
     internal int IndexOfFolder(string fullPath) => IndexOf(EntryKind.Folder, fullPath);
 
     internal LevelEntry? FindEntry(EntryKind kind, string fullPath)
@@ -181,7 +217,7 @@ public sealed class Level
         }
     }
 
-    private int IndexOf(EntryKind kind, string fullPath)
+    internal int IndexOf(EntryKind kind, string fullPath)
     {
         lock (_sync)
         {

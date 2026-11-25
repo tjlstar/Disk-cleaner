@@ -150,7 +150,8 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     private bool IsDrilled => _drills.Count > 0;
 
-    private IEnumerable<EntryRowViewModel> AllRows => _rowsByLevel.Values.SelectMany(rows => rows);
+    /// <summary>Every row shown, leaving out what was deleted in this session.</summary>
+    private IEnumerable<EntryRowViewModel> AllRows => _rowsByLevel.Values.SelectMany(rows => rows).Where(r => !r.Entry.IsGone);
 
     private bool AllListed => _rowsByLevel.Keys.All(l => l.Status != LevelStatus.Listing);
 
@@ -193,6 +194,45 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         {
             NavigateTo(parent);
         }
+    }
+
+    /// <summary>
+    /// Shows the same place again after a deletion. Folders that were deleted are dropped from the drill-downs,
+    /// and if the folder being looked at is gone, the nearest folder above it that is still there opens instead.
+    /// </summary>
+    public void Reload()
+    {
+        if (!Directory.Exists(_folderPath))
+        {
+            string? existing = Path.GetDirectoryName(_folderPath);
+            while (existing is not null && !Directory.Exists(existing))
+            {
+                existing = Path.GetDirectoryName(existing);
+            }
+
+            if (existing is null)
+            {
+                _backToDrives();
+            }
+            else
+            {
+                NavigateTo(existing);
+            }
+
+            return;
+        }
+
+        for (int i = 0; i < _drills.Count; i++)
+        {
+            _drills[i] = _drills[i].Where(Directory.Exists).ToArray();
+            if (_drills[i].Length == 0)
+            {
+                _drills.RemoveRange(i, _drills.Count - i);
+                break;
+            }
+        }
+
+        ShowCurrent(recalculate: false);
     }
 
     public void Dispose()
@@ -354,6 +394,7 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
                     // Reports from two threads can arrive out of order; a final size never goes back to "calculating".
                     if (!(row.Entry.IsSizeFinal && !e.Entry.IsSizeFinal))
                     {
+                        membershipChanged |= row.Entry.IsGone != e.Entry.IsGone;
                         row.Update(e.Entry);
                     }
 
@@ -551,7 +592,7 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
     {
         int listing = _rowsByLevel.Keys.Count(l => l.Status == LevelStatus.Listing);
         int failed = _rowsByLevel.Keys.Count(l => l.Status == LevelStatus.Failed);
-        int rowCount = _rowsByLevel.Values.Sum(r => r.Length);
+        int rowCount = AllRows.Count();
         IsEmpty = listing == 0 && rowCount == 0 && !HasError;
 
         if (!IsDrilled && listing > 0)

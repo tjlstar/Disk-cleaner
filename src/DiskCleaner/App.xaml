@@ -52,6 +52,46 @@
             </Setter>
         </Style>
 
+        <ControlTemplate x:Key="FilledButtonTemplate" TargetType="Button">
+            <Border x:Name="Bd"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Bd" Property="Opacity" Value="0.88" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter TargetName="Bd" Property="Opacity" Value="0.75" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.45" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="16,7" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template" Value="{StaticResource FilledButtonTemplate}" />
+        </Style>
+
+        <Style x:Key="DangerButton" TargetType="Button">
+            <Setter Property="Background" Value="#C42B1C" />
+            <Setter Property="BorderBrush" Value="#C42B1C" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Padding" Value="16,7" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template" Value="{StaticResource FilledButtonTemplate}" />
+        </Style>
+
         <Style x:Key="IconButton" TargetType="Button" BasedOn="{StaticResource ToolButton}">
             <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
             <Setter Property="FontSize" Value="14" />
@@ -132,6 +172,17 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="ChoiceButton" TargetType="Button" BasedOn="{StaticResource CardButton}">
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Style.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                    <Setter Property="Background" Value="{StaticResource SelectedBrush}" />
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </Application.Resources>
 </Application>
