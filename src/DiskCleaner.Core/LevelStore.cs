@@ -12,6 +12,30 @@ public sealed class LevelStore
     private readonly Dictionary<string, Level> _levels = new(StringComparer.OrdinalIgnoreCase);
     private readonly SizeCalculator _calculator = new();
 
+    /// <summary>Raised (on a background thread) whenever any remembered level gets names or sizes.</summary>
+    public event EventHandler? EntriesChanged;
+
+    /// <summary>
+    /// The remembered row for a folder, file or "smaller files" item, or null if its level hasn't been listed.
+    /// Folders and files are rows of their parent folder; "smaller files" is a row of its own folder.
+    /// </summary>
+    public LevelEntry? TryGetEntry(EntryKind kind, string path)
+    {
+        string? levelPath = kind == EntryKind.SmallFiles ? path : Path.GetDirectoryName(path);
+        if (levelPath is null)
+        {
+            return null;
+        }
+
+        Level? level;
+        lock (_lock)
+        {
+            _levels.TryGetValue(Normalize(levelPath), out level);
+        }
+
+        return level?.FindEntry(kind, path);
+    }
+
     /// <summary>Returns the remembered level, or starts listing it. Either way it becomes the one calculated first.</summary>
     public Level Open(string path)
     {
@@ -24,6 +48,8 @@ public sealed class LevelStore
             {
                 level = new Level(path);
                 level.Completed += OnLevelCompleted;
+                level.Listed += OnLevelChanged;
+                level.EntryChanged += OnLevelChanged;
                 _levels[path] = level;
                 isNew = true;
             }
@@ -102,6 +128,8 @@ public sealed class LevelStore
             _calculator.Enqueue(level, jobs);
         }
     }
+
+    private void OnLevelChanged(object? sender, EventArgs e) => EntriesChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
     /// A finished level already knows its folder's total, so the parent level can use it

@@ -13,6 +13,24 @@ public partial class BrowserView : UserControl
     public BrowserView()
     {
         InitializeComponent();
+        DataContextChanged += (_, e) =>
+        {
+            if (e.OldValue is BrowserViewModel oldVm)
+            {
+                oldVm.LevelOpened -= OnLevelOpened;
+            }
+
+            if (e.NewValue is BrowserViewModel newVm)
+            {
+                newVm.LevelOpened += OnLevelOpened;
+            }
+        };
+    }
+
+    private void OnLevelOpened(object? sender, EventArgs e)
+    {
+        _scrollViewer ??= FindScrollViewer(EntryList);
+        _scrollViewer?.ScrollToTop();
     }
 
     private BrowserViewModel? ViewModel => DataContext as BrowserViewModel;
@@ -31,8 +49,11 @@ public partial class BrowserView : UserControl
     /// WPF moves one fixed step per wheel message whatever its delta, so touchpads and
     /// multi-notch messages scroll the wrong distance. Scroll by the actual delta instead.
     /// </summary>
+    private void OnListMouseMove(object sender, MouseEventArgs e) => ViewModel?.HoldReorder();
+
     private void OnListMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        ViewModel?.HoldReorder();
         _scrollViewer ??= FindScrollViewer(EntryList);
         if (_scrollViewer is null)
         {
@@ -63,9 +84,19 @@ public partial class BrowserView : UserControl
         return null;
     }
 
+    private void OnTopCountKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && sender is TextBox box)
+        {
+            box.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            box.SelectAll();
+            e.Handled = true;
+        }
+    }
+
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
-        if (ViewModel is not { } vm)
+        if (ViewModel is not { } vm || e.OriginalSource is TextBox)
         {
             return;
         }
@@ -73,6 +104,15 @@ public partial class BrowserView : UserControl
         if (e.Key == Key.Enter && EntryList.SelectedItem is EntryRowViewModel row)
         {
             vm.Open(row);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Space && EntryList.SelectedItem is EntryRowViewModel marked)
+        {
+            if (marked.CanToggleMark)
+            {
+                vm.ToggleMark(marked);
+            }
+
             e.Handled = true;
         }
         else if (e.Key == Key.Back)

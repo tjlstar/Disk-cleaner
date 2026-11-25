@@ -170,13 +170,24 @@ public sealed class Level
             Detail = detail,
         });
 
-    internal int IndexOfFolder(string fullPath)
+    internal int IndexOfFolder(string fullPath) => IndexOf(EntryKind.Folder, fullPath);
+
+    internal LevelEntry? FindEntry(EntryKind kind, string fullPath)
+    {
+        lock (_sync)
+        {
+            int index = IndexOf(kind, fullPath);
+            return index < 0 ? null : _entries[index];
+        }
+    }
+
+    private int IndexOf(EntryKind kind, string fullPath)
     {
         lock (_sync)
         {
             for (int i = 0; i < _entries.Length; i++)
             {
-                if (_entries[i].Kind == EntryKind.Folder &&
+                if (_entries[i].Kind == kind &&
                     string.Equals(_entries[i].FullPath, fullPath, StringComparison.OrdinalIgnoreCase))
                 {
                     return i;

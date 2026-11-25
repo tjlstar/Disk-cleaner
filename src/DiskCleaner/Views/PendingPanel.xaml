@@ -1,0 +1,78 @@
+<UserControl x:Class="DiskCleaner.Views.PendingPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Background="#FAFBFC" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1,0,0,0">
+        <DockPanel Margin="16,14,12,14">
+            <StackPanel DockPanel.Dock="Top" Margin="4,0,4,10">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right"
+                            Style="{StaticResource BreadcrumbButton}"
+                            Command="{Binding ToggleExpandedCommand}"
+                            Content="{Binding ExpandText}"
+                            Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock VerticalAlignment="Center" FontSize="16" FontWeight="SemiBold" Text="待删除" />
+                </DockPanel>
+                <TextBlock Margin="0,6,0,0" Text="{Binding CountText}" />
+                <TextBlock Margin="0,2,0,0"
+                           Foreground="{StaticResource MutedTextBrush}"
+                           Text="{Binding TotalText}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasItems, Converter={StaticResource BoolToVisibility}}" />
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Bottom"
+                       Margin="4,10,4,0"
+                       FontSize="12"
+                       Foreground="{StaticResource MutedTextBrush}"
+                       Text="勾选只记在这次打开期间，关掉程序就清空。"
+                       TextWrapping="Wrap" />
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                          Visibility="{Binding ShowItems, Converter={StaticResource BoolToVisibility}}">
+                <ItemsControl ItemsSource="{Binding Items}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,0,0,6"
+                                    Padding="10,7,4,7"
+                                    Background="White"
+                                    BorderBrush="{StaticResource DividerBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel ToolTip="{Binding FullPath}">
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock FontSize="12"
+                                                   Foreground="{StaticResource MutedTextBrush}"
+                                                   Text="{Binding Location}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1"
+                                               Margin="8,0,2,0"
+                                               VerticalAlignment="Center"
+                                               Background="Transparent"
+                                               Foreground="{StaticResource MutedTextBrush}"
+                                               Text="{Binding SizeText}"
+                                               ToolTip="{Binding SizeToolTip}" />
+                                    <Button Grid.Column="2"
+                                            Padding="6"
+                                            VerticalAlignment="Center"
+                                            Style="{StaticResource IconButton}"
+                                            FontSize="10"
+                                            Command="{Binding DataContext.RemoveCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            Content="&#xE711;"
+                                            ToolTip="从待删除里去掉" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>

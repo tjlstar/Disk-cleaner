@@ -37,7 +37,7 @@ public sealed class DriveListViewModel : ObservableObject
     private void Refresh()
     {
         Drives.Clear();
-        foreach (var drive in DriveService.GetFixedDrives())
+        foreach (var drive in DriveService.GetDrives())
         {
             Drives.Add(new DriveItemViewModel(drive));
         }
@@ -51,6 +51,17 @@ public sealed class DriveItemViewModel(DriveSummary drive)
     public DriveSummary Drive => drive;
 
     public string Title => drive.DisplayName;
+
+    public string? KindTag => drive.Kind switch
+    {
+        DriveKind.ExternalDisk => "移动硬盘",
+        DriveKind.RemovableMedia => "U 盘 / 存储卡",
+        _ => null,
+    };
+
+    public bool HasKindTag => KindTag is not null;
+
+    public bool HasNoRecycleBin => !drive.HasRecycleBin;
 
     public string UsageText =>
         $"已用 {SizeFormatter.Format(drive.UsedBytes)}，共 {SizeFormatter.Format(drive.TotalBytes)}";

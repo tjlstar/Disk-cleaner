@@ -87,6 +87,9 @@ internal static unsafe partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool FindClose(nint hFindFile);
 
+    [LibraryImport("kernel32.dll", EntryPoint = "QueryDosDeviceW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    public static partial uint QueryDosDevice(string lpDeviceName, char* lpTargetPath, uint ucchMax);
+
     [LibraryImport("kernel32.dll", EntryPoint = "CreateFileW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial SafeFileHandle CreateFile(
         string lpFileName,

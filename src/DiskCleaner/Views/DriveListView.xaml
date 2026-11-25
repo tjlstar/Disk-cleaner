@@ -8,7 +8,7 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <TextBlock Text="选一个本机硬盘" FontSize="24" FontWeight="SemiBold" />
+        <TextBlock Text="选一个盘" FontSize="24" FontWeight="SemiBold" />
 
         <DockPanel Grid.Row="1" Margin="0,8,0,20" LastChildFill="True">
             <Button DockPanel.Dock="Right"
@@ -18,7 +18,7 @@
             <TextBlock VerticalAlignment="Center"
                        Foreground="{StaticResource MutedTextBrush}"
                        TextWrapping="Wrap"
-                       Text="这里只列出装在这台电脑里的固定硬盘。U 盘、移动硬盘和网络位置暂不支持。" />
+                       Text="本机硬盘、移动硬盘、U 盘和存储卡都在这里。网络位置和网盘不列出。插上新的盘后按「刷新」。" />
         </DockPanel>
 
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
@@ -44,7 +44,17 @@
                                         <TextBlock DockPanel.Dock="Right"
                                                    Foreground="{StaticResource MutedTextBrush}"
                                                    Text="{Binding FreeText}" />
-                                        <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding Title}" />
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock FontSize="16" FontWeight="SemiBold" Text="{Binding Title}" />
+                                            <Border Margin="10,0,0,0"
+                                                    Padding="7,1"
+                                                    VerticalAlignment="Center"
+                                                    Background="{StaticResource BarTrackBrush}"
+                                                    CornerRadius="4"
+                                                    Visibility="{Binding HasKindTag, Converter={StaticResource BoolToVisibility}}">
+                                                <TextBlock FontSize="12" Foreground="{StaticResource MutedTextBrush}" Text="{Binding KindTag}" />
+                                            </Border>
+                                        </StackPanel>
                                     </DockPanel>
                                     <Grid Height="8" Margin="0,10,0,8">
                                         <Grid.ColumnDefinitions>
@@ -57,6 +67,11 @@
                                     <TextBlock Foreground="{StaticResource MutedTextBrush}"
                                                Text="{Binding UsageText}"
                                                ToolTip="{Binding ExactText}" />
+                                    <TextBlock Margin="0,4,0,0"
+                                               FontSize="12"
+                                               Foreground="{StaticResource WarningTextBrush}"
+                                               Text="这个盘没有回收站。删除时会先停下来问你，默认跳过。"
+                                               Visibility="{Binding HasNoRecycleBin, Converter={StaticResource BoolToVisibility}}" />
                                 </StackPanel>
                             </Grid>
                         </Button>
@@ -69,7 +84,7 @@
                    HorizontalAlignment="Center"
                    VerticalAlignment="Center"
                    Foreground="{StaticResource MutedTextBrush}"
-                   Text="没有找到本机固定硬盘。"
+                   Text="没有找到可以查看的盘。"
                    Visibility="{Binding HasNoDrives, Converter={StaticResource BoolToVisibility}}" />
     </Grid>
 </UserControl>

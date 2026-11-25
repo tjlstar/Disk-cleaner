@@ -146,6 +146,21 @@ public class LevelStoreTests
     }
 
     [Fact]
+    public async Task Remembered_rows_can_be_looked_up_by_path()
+    {
+        using var tree = new TempTree();
+        tree.File(@"a\one.bin", 10);
+        tree.File("tiny.txt", 4);
+        var store = new LevelStore();
+        var level = store.Open(tree.Root);
+        await WaitUntilSettled(level);
+
+        Assert.Equal(10, store.TryGetEntry(EntryKind.Folder, Path.Combine(tree.Root, "a"))?.Size);
+        Assert.Equal(4, store.TryGetEntry(EntryKind.SmallFiles, tree.Root)?.Size);
+        Assert.Null(store.TryGetEntry(EntryKind.Folder, Path.Combine(tree.Root, "a", "not-opened")));
+    }
+
+    [Fact]
     public async Task Folder_that_cannot_be_opened_fails_the_level()
     {
         using var tree = new TempTree();

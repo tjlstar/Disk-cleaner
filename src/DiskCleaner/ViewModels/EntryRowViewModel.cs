@@ -10,14 +10,18 @@ public sealed class EntryRowViewModel : ObservableObject
     private const string FileGlyph = "\uE8A5";
     private const string FilesGlyph = "\uE8C8";
 
+    private readonly Action<EntryRowViewModel> _toggleMark;
     private LevelEntry _entry;
     private double _barFraction;
     private long _runningSize;
+    private MarkState _mark;
 
-    public EntryRowViewModel(int index, LevelEntry entry)
+    public EntryRowViewModel(int index, LevelEntry entry, MarkState mark, Action<EntryRowViewModel> toggleMark)
     {
         Index = index;
         _entry = entry;
+        _mark = mark;
+        _toggleMark = toggleMark;
     }
 
     /// <summary>Position in the level's entry list, which never changes; the row's place on screen does.</summary>
@@ -78,6 +82,40 @@ public sealed class EntryRowViewModel : ObservableObject
     public GridLength BarLength => new(_barFraction, GridUnitType.Star);
 
     public GridLength BarRestLength => new(1 - _barFraction, GridUnitType.Star);
+
+    public bool IsMarked
+    {
+        get => _mark != MarkState.None;
+        set
+        {
+            if (value != IsMarked)
+            {
+                _toggleMark(this);
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Items that go along with an outer folder can't be unticked on their own.</summary>
+    public bool CanToggleMark => _mark != MarkState.CoveredByOuterFolder;
+
+    public bool IsCovered => _mark == MarkState.CoveredByOuterFolder;
+
+    public DeletionItem ToDeletionItem() => new(_entry.Kind, _entry.FullPath, _entry.Name);
+
+    public void SetMark(MarkState mark)
+    {
+        if (_mark == mark)
+        {
+            return;
+        }
+
+        _mark = mark;
+        OnPropertyChanged(nameof(IsMarked));
+        OnPropertyChanged(nameof(CanToggleMark));
+        OnPropertyChanged(nameof(IsCovered));
+    }
 
     public void Update(LevelEntry entry)
     {

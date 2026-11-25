@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -11,8 +12,11 @@ public sealed record BreadcrumbSegment(string Name, string Path, bool IsFirst, b
 /// <summary>Shows one level at a time; the level's own numbers come from <see cref="LevelStore"/>.</summary>
 public sealed class BrowserViewModel : ObservableObject, IDisposable
 {
+    private static readonly TimeSpan ReorderHold = TimeSpan.FromSeconds(1.2);
+
     private readonly LevelStore _store;
     private readonly DriveSummary _drive;
+    private readonly DeletionList _deletionList;
     private readonly Action _backToDrives;
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
     private readonly DispatcherTimer _progressTimer;
@@ -24,12 +28,21 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
     private string _statusText = "";
     private string? _errorText;
     private bool _isEmpty;
+    private DateTime _holdReorderUntil;
+    private bool _reorderPending;
 
-    public BrowserViewModel(LevelStore store, DriveSummary drive, Action backToDrives)
+    public BrowserViewModel(
+        LevelStore store,
+        DriveSummary drive,
+        BrowseOptions options,
+        DeletionList deletionList,
+        Action backToDrives)
     {
         _store = store;
         _drive = drive;
+        _deletionList = deletionList;
         _backToDrives = backToDrives;
+        Options = options;
 
         GoUpCommand = new RelayCommand(_ => GoUp());
         NavigateCommand = new RelayCommand(p =>
@@ -42,15 +55,30 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         RecalculateCommand = new RelayCommand(_ => Attach(_store.Recalculate(_currentPath)));
         BackToDrivesCommand = new RelayCommand(_ => _backToDrives());
 
+        Options.PropertyChanged += OnOptionsChanged;
+        _deletionList.Changed += OnDeletionListChanged;
+
         _progressTimer = new DispatcherTimer(
             TimeSpan.FromMilliseconds(400),
             DispatcherPriority.Background,
-            (_, _) => RefreshRunningSizes(),
+            (_, _) =>
+            {
+                RefreshRunningSizes();
+                if (_reorderPending && !IsHoldingReorder)
+                {
+                    Reorder();
+                }
+            },
             _dispatcher);
 
         NavigateTo(drive.RootPath);
         _progressTimer.Start();
     }
+
+    /// <summary>Raised after moving to a different level, so the view can scroll back to the top.</summary>
+    public event EventHandler? LevelOpened;
+
+    public BrowseOptions Options { get; }
 
     public ObservableCollection<EntryRowViewModel> Rows
     {
@@ -94,6 +122,17 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     public ICommand BackToDrivesCommand { get; }
 
+    /// <summary>In "largest N" mode the filter only applies once every folder in the level has a size.</summary>
+    private bool IsFiltering => Options.ShowTopOnly && _level?.Status == LevelStatus.Done;
+
+    private bool IsHoldingReorder => DateTime.UtcNow < _holdReorderUntil;
+
+    /// <summary>
+    /// Called while the pointer moves or scrolls over the list. Rows keep their places for a moment,
+    /// so a row doesn't slide away just as it is clicked; sizes still update in place.
+    /// </summary>
+    public void HoldReorder() => _holdReorderUntil = DateTime.UtcNow + ReorderHold;
+
     public void Open(EntryRowViewModel row)
     {
         if (row.CanOpen)
@@ -101,6 +140,8 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
             NavigateTo(row.Entry.FullPath);
         }
     }
+
+    public void ToggleMark(EntryRowViewModel row) => _deletionList.Toggle(row.ToDeletionItem());
 
     public void GoUp()
     {
@@ -118,6 +159,8 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _progressTimer.Stop();
+        Options.PropertyChanged -= OnOptionsChanged;
+        _deletionList.Changed -= OnDeletionListChanged;
         Detach();
     }
 
@@ -134,6 +177,7 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         _currentPath = level.Path;
         RebuildBreadcrumbs();
         Rebuild();
+        LevelOpened?.Invoke(this, EventArgs.Empty);
     }
 
     private void Detach()
@@ -153,7 +197,41 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     private void OnEntryChanged(object? sender, EntryChangedEventArgs e) => Post(sender, () => Apply(e.Index, e.Entry));
 
-    private void OnCompleted(object? sender, EventArgs e) => Post(sender, UpdateStatus);
+    private void OnCompleted(object? sender, EventArgs e) => Post(sender, () =>
+    {
+        if (Options.ShowTopOnly)
+        {
+            if (IsHoldingReorder)
+            {
+                _reorderPending = true;
+            }
+            else
+            {
+                ShowRows();
+            }
+        }
+
+        UpdateStatus();
+    });
+
+    private void OnOptionsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is not (nameof(BrowseOptions.ShowTopOnly) or nameof(BrowseOptions.TopCount)))
+        {
+            return;
+        }
+
+        ShowRows();
+        UpdateStatus();
+    }
+
+    private void OnDeletionListChanged(object? sender, EventArgs e)
+    {
+        foreach (var row in _rowsByIndex)
+        {
+            row.SetMark(_deletionList.GetState(row.Kind, row.Entry.FullPath));
+        }
+    }
 
     private void Post(object? sender, Action action) =>
         _dispatcher.BeginInvoke(() =>
@@ -177,13 +255,31 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         _rowsByIndex = new EntryRowViewModel[snapshot.Entries.Count];
         for (int i = 0; i < _rowsByIndex.Length; i++)
         {
-            _rowsByIndex[i] = new EntryRowViewModel(i, snapshot.Entries[i]);
+            LevelEntry entry = snapshot.Entries[i];
+            _rowsByIndex[i] = new EntryRowViewModel(
+                i,
+                entry,
+                _deletionList.GetState(entry.Kind, entry.FullPath),
+                ToggleMark);
         }
 
-        Rows = new ObservableCollection<EntryRowViewModel>(_rowsByIndex.OrderBy(r => r.Entry, EntryOrder.Comparer));
-        UpdateBars(force: true);
+        ShowRows();
         RefreshRunningSizes();
         UpdateStatus();
+    }
+
+    /// <summary>Picks the visible rows from what is remembered; never reads the disk.</summary>
+    private void ShowRows()
+    {
+        IEnumerable<EntryRowViewModel> rows = _rowsByIndex.OrderBy(r => r.Entry, EntryOrder.Comparer);
+        if (IsFiltering)
+        {
+            rows = rows.Where(r => r.Entry.Status == SizeStatus.Known).Take(Options.TopCount);
+        }
+
+        Rows = new ObservableCollection<EntryRowViewModel>(rows);
+        _reorderPending = false;
+        UpdateBars(force: true);
     }
 
     private void Apply(int index, LevelEntry entry)
@@ -195,9 +291,42 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
         EntryRowViewModel row = _rowsByIndex[index];
         row.Update(entry);
-        MoveToSortedPlace(row);
+        if (IsHoldingReorder)
+        {
+            _reorderPending = true;
+        }
+        else if (IsFiltering)
+        {
+            ShowRows();
+        }
+        else
+        {
+            MoveToSortedPlace(row);
+        }
+
         UpdateBars(force: false, changed: row);
         UpdateStatus();
+    }
+
+    /// <summary>Puts every row in its sorted place at once, after a hold. Moves rows rather than replacing the list, so scrolling stays put.</summary>
+    private void Reorder()
+    {
+        _reorderPending = false;
+        if (Options.ShowTopOnly)
+        {
+            ShowRows();
+            return;
+        }
+
+        var sorted = _rows.OrderBy(r => r.Entry, EntryOrder.Comparer).ToList();
+        for (int i = 0; i < sorted.Count; i++)
+        {
+            int current = _rows.IndexOf(sorted[i]);
+            if (current != i)
+            {
+                _rows.Move(current, i);
+            }
+        }
     }
 
     /// <summary>A row moves as soon as its size is known, so the largest stays on top while the rest are still counting.</summary>
@@ -323,6 +452,13 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         if (unknown > 0)
         {
             text += $"，另有 {unknown} 项大小未知";
+        }
+
+        if (Options.ShowTopOnly)
+        {
+            text += calculating > 0
+                ? $"。算完后只保留最大的 {Options.TopCount} 个"
+                : $"。只显示最大的 {Math.Min(Options.TopCount, _rows.Count)} 个";
         }
 
         StatusText = text;

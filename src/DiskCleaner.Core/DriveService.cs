@@ -2,42 +2,78 @@ using DiskCleaner.Core.Interop;
 
 namespace DiskCleaner.Core;
 
-public sealed record DriveSummary(string RootPath, string Letter, string Label, long TotalBytes, long FreeBytes)
+public enum DriveKind
+{
+    /// <summary>A disk inside the computer.</summary>
+    Internal,
+
+    /// <summary>A hard disk on USB or a similar external bus. Windows gives it a Recycle Bin.</summary>
+    ExternalDisk,
+
+    /// <summary>A USB stick or memory card. Windows gives it no Recycle Bin.</summary>
+    RemovableMedia,
+}
+
+public sealed record DriveSummary(
+    string RootPath,
+    string Letter,
+    string Label,
+    long TotalBytes,
+    long FreeBytes,
+    DriveKind Kind)
 {
     public long UsedBytes => TotalBytes - FreeBytes;
 
-    public string DisplayName => string.IsNullOrWhiteSpace(Label) ? $"本机磁盘 ({Letter})" : $"{Label} ({Letter})";
+    public bool HasRecycleBin => Kind != DriveKind.RemovableMedia;
+
+    public string DisplayName => string.IsNullOrWhiteSpace(Label)
+        ? $"{DefaultName} ({Letter})"
+        : $"{Label} ({Letter})";
+
+    private string DefaultName => Kind switch
+    {
+        DriveKind.ExternalDisk => "移动硬盘",
+        DriveKind.RemovableMedia => "U 盘或存储卡",
+        _ => "本机磁盘",
+    };
 }
 
 public static class DriveService
 {
     /// <summary>
-    /// Fixed disks inside this computer. USB and other external buses are left out even when Windows
-    /// reports them as fixed, because deleting there may not go through the Recycle Bin.
+    /// Local disks, external disks, USB sticks and memory cards. Network locations are left out,
+    /// and so are drive letters with no storage device behind them, which is how cloud drives
+    /// (and subst letters) show up.
     /// </summary>
-    public static IReadOnlyList<DriveSummary> GetFixedDrives()
+    public static IReadOnlyList<DriveSummary> GetDrives()
     {
         var drives = new List<DriveSummary>();
         foreach (var drive in DriveInfo.GetDrives())
         {
-            if (drive.DriveType != DriveType.Fixed)
+            if (drive.DriveType is not (DriveType.Fixed or DriveType.Removable))
             {
                 continue;
             }
 
             try
             {
-                if (!drive.IsReady || IsOnExternalBus(drive.Name))
+                string letter = drive.Name.TrimEnd('\\');
+                if (!drive.IsReady || IsSubst(letter) || QueryBusType(letter) is not { } busType)
                 {
                     continue;
                 }
 
+                DriveKind kind = drive.DriveType == DriveType.Removable
+                    ? DriveKind.RemovableMedia
+                    : IsExternalBus(busType) ? DriveKind.ExternalDisk : DriveKind.Internal;
+
                 drives.Add(new DriveSummary(
                     drive.RootDirectory.FullName,
-                    drive.Name.TrimEnd('\\'),
+                    letter,
                     drive.VolumeLabel,
                     drive.TotalSize,
-                    drive.TotalFreeSpace));
+                    drive.TotalFreeSpace,
+                    kind));
             }
             catch (IOException)
             {
@@ -50,11 +86,28 @@ public static class DriveService
         return drives;
     }
 
-    private static unsafe bool IsOnExternalBus(string rootPath)
+    private static bool IsExternalBus(int busType) => busType is NativeMethods.BusTypeUsb
+        or NativeMethods.BusType1394
+        or NativeMethods.BusTypeSd
+        or NativeMethods.BusTypeMmc;
+
+    private static unsafe bool IsSubst(string letter)
     {
-        string volume = @"\\.\" + rootPath.TrimEnd('\\');
+        const int capacity = 1024;
+        char* target = stackalloc char[capacity];
+        if (NativeMethods.QueryDosDevice(letter, target, capacity) == 0)
+        {
+            return false;
+        }
+
+        return new ReadOnlySpan<char>(target, capacity).StartsWith(@"\??\");
+    }
+
+    /// <returns>The storage bus type, or null when no storage device answers for this letter.</returns>
+    private static unsafe int? QueryBusType(string letter)
+    {
         using var handle = NativeMethods.CreateFile(
-            volume,
+            @"\\.\" + letter,
             0,
             NativeMethods.FILE_SHARE_READ | NativeMethods.FILE_SHARE_WRITE,
             0,
@@ -63,7 +116,7 @@ public static class DriveService
             0);
         if (handle.IsInvalid)
         {
-            return false;
+            return null;
         }
 
         var query = new NativeMethods.STORAGE_PROPERTY_QUERY();
@@ -79,13 +132,9 @@ public static class DriveService
                 out _,
                 0))
         {
-            return false;
+            return null;
         }
 
-        var descriptor = (NativeMethods.STORAGE_DEVICE_DESCRIPTOR*)buffer;
-        return descriptor->BusType is NativeMethods.BusTypeUsb
-            or NativeMethods.BusType1394
-            or NativeMethods.BusTypeSd
-            or NativeMethods.BusTypeMmc;
+        return ((NativeMethods.STORAGE_DEVICE_DESCRIPTOR*)buffer)->BusType;
     }
 }
