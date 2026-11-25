@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DiskCleaner.Core/DiskCleaner.Core.csproj" />
+    <Project Path="src/DiskCleaner/DiskCleaner.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DiskCleaner.Core.Tests/DiskCleaner.Core.Tests.csproj" />
+  </Folder>
+</Solution>
