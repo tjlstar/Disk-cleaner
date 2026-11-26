@@ -74,9 +74,39 @@ public sealed class DeletionList
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Remove(DeletionItem item)
+    public void Remove(DeletionItem item) => RemoveRange([item]);
+
+    /// <summary>Adds every item that isn't already covered. One folder drops anything the list already had inside it.</summary>
+    public void AddRange(IEnumerable<DeletionItem> items)
     {
-        if (_items.RemoveAll(existing => existing.Is(item.Kind, item.Path)) > 0)
+        bool changed = false;
+        foreach (var item in items)
+        {
+            if (GetState(item.Kind, item.Path) != MarkState.None)
+            {
+                continue;
+            }
+
+            changed |= _items.RemoveAll(existing => Covers(item, existing.Kind, existing.Path)) > 0;
+            _items.Add(item);
+            changed = true;
+        }
+
+        if (changed)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public void RemoveRange(IEnumerable<DeletionItem> items)
+    {
+        int removed = 0;
+        foreach (var item in items)
+        {
+            removed += _items.RemoveAll(existing => existing.Is(item.Kind, item.Path));
+        }
+
+        if (removed > 0)
         {
             Changed?.Invoke(this, EventArgs.Empty);
         }

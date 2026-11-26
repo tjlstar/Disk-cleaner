@@ -13,6 +13,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyTitle>磁盘空间清理</AssemblyTitle>
     <Product>磁盘空间清理</Product>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\AppIcon.ico" />
+  </ItemGroup>
 
 </Project>

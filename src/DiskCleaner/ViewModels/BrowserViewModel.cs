@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.IO;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -47,13 +46,14 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
     private bool _canDrill;
     private string _drillHint = "";
     private int _drillTargetCount;
+    private bool? _selectAllState;
+    private bool _canSelectAll;
     private DateTime _holdReorderUntil;
     private bool _reorderPending;
 
     public BrowserViewModel(
         LevelStore store,
         DriveSummary drive,
-        BrowseOptions options,
         DeletionList deletionList,
         Action backToDrives)
     {
@@ -61,7 +61,6 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         _drive = drive;
         _deletionList = deletionList;
         _backToDrives = backToDrives;
-        Options = options;
 
         GoUpCommand = new RelayCommand(_ => GoUp());
         NavigateCommand = new RelayCommand(p =>
@@ -75,7 +74,6 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         RecalculateCommand = new RelayCommand(_ => ShowCurrent(recalculate: true));
         BackToDrivesCommand = new RelayCommand(_ => _backToDrives());
 
-        Options.PropertyChanged += OnOptionsChanged;
         _deletionList.Changed += OnDeletionListChanged;
 
         _timer = new DispatcherTimer(
@@ -90,8 +88,6 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     /// <summary>Raised after the list switches to another folder or drill-down, so the view can scroll back to the top.</summary>
     public event EventHandler? ViewOpened;
-
-    public BrowseOptions Options { get; }
 
     public RowCollection Rows { get; } = [];
 
@@ -138,6 +134,20 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _drillHint, value);
     }
 
+    /// <summary>True when every row that can be ticked is ticked, false when none are, null when only some are.</summary>
+    public bool? SelectAllState
+    {
+        get => _selectAllState;
+        private set => SetProperty(ref _selectAllState, value);
+    }
+
+    /// <summary>False when every row is only ticked because a folder further out already covers it.</summary>
+    public bool CanSelectAll
+    {
+        get => _canSelectAll;
+        private set => SetProperty(ref _canSelectAll, value);
+    }
+
     public ICommand GoUpCommand { get; }
 
     public ICommand NavigateCommand { get; }
@@ -155,9 +165,20 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     private bool AllListed => _rowsByLevel.Keys.All(l => l.Status != LevelStatus.Listing);
 
-    private bool AllCalculated => _rowsByLevel.Keys.All(l => l.Status is LevelStatus.Done or LevelStatus.Failed);
-
     private bool IsHoldingReorder => DateTime.UtcNow < _holdReorderUntil;
+
+    /// <summary>Ticks every row that can be ticked, or clears them when they already all are.</summary>
+    public void ToggleSelectAll()
+    {
+        if (SelectAllState == true)
+        {
+            _deletionList.RemoveRange(AllRows.Where(r => r.IsMarked && !r.IsCovered).Select(r => r.ToDeletionItem()));
+        }
+        else
+        {
+            _deletionList.AddRange(AllRows.Where(r => r.CanToggleMark && !r.IsMarked).Select(r => r.ToDeletionItem()));
+        }
+    }
 
     /// <summary>
     /// Called while the pointer moves or scrolls over the list. Rows keep their places for a moment,
@@ -238,7 +259,6 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        Options.PropertyChanged -= OnOptionsChanged;
         _deletionList.Changed -= OnDeletionListChanged;
         Detach();
     }
@@ -352,21 +372,15 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     private void OnCompleted(object? sender, EventArgs e) => _changes.Enqueue(new Change((Level)sender!, ChangeKind.Completed, null));
 
-    private void OnOptionsChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName is nameof(BrowseOptions.ShowTopOnly) or nameof(BrowseOptions.TopCount))
-        {
-            RefreshDrillTargets();
-            UpdateStatus();
-        }
-    }
-
     private void OnDeletionListChanged(object? sender, EventArgs e)
     {
         foreach (var row in AllRows)
         {
             row.SetMark(_deletionList.GetState(row.Kind, row.Entry.FullPath));
         }
+
+        RefreshDrillTargets();
+        UpdateSelectAll();
     }
 
     /// <summary>Applies everything reported since the last time, then sorts and recounts once.</summary>
@@ -456,6 +470,7 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
         UpdateBars();
         RefreshDrillTargets();
+        UpdateSelectAll();
         UpdateStatus();
     }
 
@@ -523,43 +538,20 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
     private double Fraction(LevelEntry entry) =>
         entry.Status == SizeStatus.Known && _maxKnownSize > 0 ? (double)entry.Size / _maxKnownSize : 0;
 
-    /// <summary>
-    /// The folders a drill-down would open, largest first. "All" takes every folder that can be opened;
-    /// "largest N" needs every size first, and takes only folders whose size is known.
-    /// </summary>
-    private string[] FindDrillTargets()
-    {
-        IEnumerable<EntryRowViewModel> folders = AllRows
-            .Where(r => r.CanOpen && r.Entry.Status != SizeStatus.Unknown)
-            .OrderBy(r => r, EntryRowViewModel.Order);
-        if (Options.ShowTopOnly)
-        {
-            folders = folders.Where(r => r.Entry.Status == SizeStatus.Known).Take(Options.TopCount);
-        }
-
-        return folders.Select(r => r.Entry.FullPath).ToArray();
-    }
+    /// <summary>The ticked folders a drill-down will open, largest first. Files can't be opened, and neither can links.</summary>
+    private string[] FindDrillTargets() => AllRows
+        .Where(r => r.Kind == EntryKind.Folder && r.CanOpen && r.IsMarked && !r.IsCovered)
+        .OrderBy(r => r, EntryRowViewModel.Order)
+        .Select(r => r.Entry.FullPath)
+        .ToArray();
 
     private void RefreshDrillTargets()
     {
-        HashSet<string> marked = [];
-        if (!Options.ShowTopOnly)
-        {
-            _drillTargetCount = AllListed ? AllRows.Count(r => r.CanOpen && r.Entry.Status != SizeStatus.Unknown) : 0;
-        }
-        else if (AllCalculated)
-        {
-            string[] targets = FindDrillTargets();
-            _drillTargetCount = targets.Length;
-            marked = targets.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        }
-        else
-        {
-            _drillTargetCount = 0;
-        }
-
+        string[] targets = AllListed ? FindDrillTargets() : [];
+        _drillTargetCount = targets.Length;
         CanDrill = _drillTargetCount > 0;
         UpdateDrillHint();
+        var marked = targets.ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var row in AllRows)
         {
             row.IsDrillTarget = row.Kind == EntryKind.Folder && marked.Contains(row.Entry.FullPath);
@@ -568,24 +560,82 @@ public sealed class BrowserViewModel : ObservableObject, IDisposable
 
     private void UpdateDrillHint()
     {
-        if (Options.ShowTopOnly && !AllCalculated)
-        {
-            DrillHint = $"全部算完后，才能挑出最大的 {Options.TopCount} 个";
-        }
-        else if (!AllListed)
+        if (!AllListed)
         {
             DrillHint = "";
+            return;
         }
-        else if (!CanDrill)
+
+        if (_drillTargetCount > 0)
         {
-            DrillHint = "这里没有可以再往下展开的文件夹";
+            DrillHint = $"会展开勾选的 {_drillTargetCount} 个文件夹";
+            return;
+        }
+
+        bool checkedFolder = false;
+        bool coveredFolder = false;
+        foreach (var row in AllRows)
+        {
+            if (row.Kind != EntryKind.Folder)
+            {
+                continue;
+            }
+
+            if (row.IsCovered && row.CanOpen)
+            {
+                coveredFolder = true;
+            }
+            else if (row.IsMarked)
+            {
+                checkedFolder = true;
+            }
+        }
+
+        if (checkedFolder)
+        {
+            DrillHint = "勾选的文件夹都不能再往里展开";
+        }
+        else if (coveredFolder)
+        {
+            DrillHint = "这些勾跟着上面的文件夹。要单独展开，先从待删除去掉那个文件夹";
+        }
+        else if (AllRows.Any())
+        {
+            DrillHint = "先勾选要展开的文件夹";
         }
         else
         {
-            DrillHint = Options.ShowTopOnly
-                ? $"会展开标出的 {_drillTargetCount} 个文件夹"
-                : $"会展开这里的 {_drillTargetCount} 个文件夹";
+            DrillHint = "";
         }
+    }
+
+    private void UpdateSelectAll()
+    {
+        int toggleable = 0;
+        int marked = 0;
+        bool covered = false;
+        foreach (var row in AllRows)
+        {
+            if (row.IsCovered)
+            {
+                covered = true;
+            }
+            else
+            {
+                toggleable++;
+                if (row.IsMarked)
+                {
+                    marked++;
+                }
+            }
+        }
+
+        CanSelectAll = toggleable > 0;
+        SelectAllState = toggleable == 0
+            ? covered
+            : marked == 0 && !covered ? false
+            : marked == toggleable ? true
+            : null;
     }
 
     private void UpdateStatus()

@@ -56,6 +56,28 @@ public class DeletionListTests
     }
 
     [Fact]
+    public void Adding_and_removing_many_happens_in_one_go()
+    {
+        var list = new DeletionList();
+        int changes = 0;
+        list.Changed += (_, _) => changes++;
+
+        list.AddRange([
+            File(@"C:\Data\Old\backup.zip"),
+            Folder(@"C:\Data\Old"),
+            Folder(@"C:\Data\Keep"),
+        ]);
+
+        Assert.Equal([@"C:\Data\Keep", @"C:\Data\Old"], list.Items.Select(i => i.Path).Order());
+        Assert.Equal(1, changes);
+
+        list.RemoveRange([Folder(@"C:\Data\Keep"), Folder(@"C:\Data\Missing")]);
+
+        Assert.Equal([@"C:\Data\Old"], list.Items.Select(i => i.Path));
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
     public void Similar_names_are_not_treated_as_inside()
     {
         var list = new DeletionList();

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,7 @@ namespace DiskCleaner.Views;
 public partial class BrowserView : UserControl
 {
     private ScrollViewer? _scrollViewer;
+    private bool _pushingSelectAll;
 
     public BrowserView()
     {
@@ -18,13 +20,42 @@ public partial class BrowserView : UserControl
             if (e.OldValue is BrowserViewModel oldVm)
             {
                 oldVm.ViewOpened -= OnViewOpened;
+                oldVm.PropertyChanged -= OnViewModelChanged;
             }
 
             if (e.NewValue is BrowserViewModel newVm)
             {
                 newVm.ViewOpened += OnViewOpened;
+                newVm.PropertyChanged += OnViewModelChanged;
+                ShowSelectAll(newVm);
             }
         };
+    }
+
+    /// <summary>The box shows the list's state. Pushing that state must not count as the person clicking it.</summary>
+    private void ShowSelectAll(BrowserViewModel vm)
+    {
+        _pushingSelectAll = true;
+        SelectAllBox.IsChecked = vm.SelectAllState;
+        SelectAllBox.IsEnabled = vm.CanSelectAll;
+        _pushingSelectAll = false;
+    }
+
+    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is BrowserViewModel vm &&
+            e.PropertyName is nameof(BrowserViewModel.SelectAllState) or nameof(BrowserViewModel.CanSelectAll) or "")
+        {
+            ShowSelectAll(vm);
+        }
+    }
+
+    private void OnSelectAllChanged(object sender, RoutedEventArgs e)
+    {
+        if (!_pushingSelectAll)
+        {
+            ViewModel?.ToggleSelectAll();
+        }
     }
 
     private void OnViewOpened(object? sender, EventArgs e)
@@ -84,19 +115,9 @@ public partial class BrowserView : UserControl
         return null;
     }
 
-    private void OnTopCountKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && sender is TextBox box)
-        {
-            box.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
-            box.SelectAll();
-            e.Handled = true;
-        }
-    }
-
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
-        if (ViewModel is not { } vm || e.OriginalSource is TextBox)
+        if (ViewModel is not { } vm || e.OriginalSource is TextBox or CheckBox)
         {
             return;
         }

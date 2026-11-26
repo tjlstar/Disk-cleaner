@@ -8,7 +8,6 @@ public sealed class MainViewModel : ObservableObject
 {
     private readonly LevelStore _store = new();
     private readonly DeletionList _deletionList = new();
-    private readonly BrowseOptions _options = new();
     private readonly Func<RefusedItem, RefusalChoice> _askRefusal;
     private object _currentPage;
 
@@ -44,7 +43,7 @@ public sealed class MainViewModel : ObservableObject
     public void StopDeletion() => (CurrentPage as DeletionProgressViewModel)?.Stop();
 
     private void OpenDrive(DriveSummary drive) =>
-        CurrentPage = new BrowserViewModel(_store, drive, _options, _deletionList, ShowDrives);
+        CurrentPage = new BrowserViewModel(_store, drive, _deletionList, ShowDrives);
 
     private void ShowDrives() =>
         CurrentPage = new DriveListViewModel(OpenDrive);

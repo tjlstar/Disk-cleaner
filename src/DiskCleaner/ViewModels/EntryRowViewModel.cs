@@ -51,7 +51,7 @@ public sealed class EntryRowViewModel : ObservableObject
 
     public string PathText => _entry.FullPath;
 
-    /// <summary>In "largest N" mode, the folders the next drill-down will open.</summary>
+    /// <summary>A ticked folder the next drill-down will open.</summary>
     public bool IsDrillTarget
     {
         get => _isDrillTarget;

@@ -80,45 +80,23 @@
             </DockPanel>
         </Border>
 
-        <!-- Drill-down choice and list status -->
+        <!-- Select all, and drill into the ticked folders -->
         <DockPanel Grid.Row="1" Margin="16,10,20,6">
-            <TextBlock DockPanel.Dock="Left"
-                       Margin="0,0,8,0"
-                       VerticalAlignment="Center"
-                       Foreground="{StaticResource MutedTextBrush}"
-                       Text="下钻时展开" />
-            <Border DockPanel.Dock="Left"
-                    Padding="2"
-                    BorderBrush="{StaticResource DividerBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6">
-                <StackPanel Orientation="Horizontal">
-                    <RadioButton Style="{StaticResource SegmentRadio}"
-                                 Content="全部文件夹"
-                                 GroupName="DrillMode"
-                                 IsChecked="{Binding Options.ShowAll, Mode=TwoWay}" />
-                    <RadioButton Style="{StaticResource SegmentRadio}"
-                                 Content="最大的"
-                                 GroupName="DrillMode"
-                                 IsChecked="{Binding Options.ShowTopOnly, Mode=TwoWay}" />
-                    <TextBox Width="36"
-                             Margin="2,0,4,0"
-                             Padding="0,2"
-                             VerticalAlignment="Center"
-                             HorizontalContentAlignment="Center"
-                             MaxLength="4"
-                             KeyDown="OnTopCountKeyDown"
-                             ToolTip="1 到 20"
-                             Text="{Binding Options.TopCountText, UpdateSourceTrigger=LostFocus}" />
-                    <TextBlock Margin="0,0,8,0" VerticalAlignment="Center" Text="个" />
-                </StackPanel>
-            </Border>
+            <CheckBox x:Name="SelectAllBox"
+                      DockPanel.Dock="Left"
+                      VerticalAlignment="Center"
+                      Content="全选"
+                      IsThreeState="True"
+                      Checked="OnSelectAllChanged"
+                      Unchecked="OnSelectAllChanged"
+                      Indeterminate="OnSelectAllChanged"
+                      ToolTip="把这一页能勾选的项都放进待删除，或都拿出来" />
             <Button DockPanel.Dock="Left"
-                    Margin="10,0,0,0"
+                    Margin="16,0,0,0"
                     Style="{StaticResource ToolButton}"
                     Command="{Binding DrillCommand}"
                     IsEnabled="{Binding CanDrill}"
-                    ToolTip="把列表里的文件夹再往里展开一层，合成一张列表。每按一次往下一层">
+                    ToolTip="把勾选的文件夹再往里展开一层，合成一张列表。每按一次往下一层">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Margin="0,0,6,0"
                                VerticalAlignment="Center"
@@ -204,7 +182,7 @@
                                   Focusable="False"
                                   IsChecked="{Binding IsMarked, Mode=TwoWay}"
                                   IsEnabled="{Binding CanToggleMark}"
-                                  ToolTip="放进待删除，或者从里面拿出来" />
+                                  ToolTip="放进待删除。勾上的文件夹可以按「下钻一层」一起展开" />
 
                         <TextBlock x:Name="Icon"
                                    Grid.Column="1"
